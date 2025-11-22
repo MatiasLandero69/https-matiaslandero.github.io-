@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLA Dashboard v19 (MMR Completo)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { background-color: #f3f4f6; color: #1f2937; font-family: 'Roboto', sans-serif; margin: 0; }
+        .header-bg { background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%); color: white; border-bottom: 4px solid #7f1d1d; }
+        .card { background-color: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid #e5e7eb; }
+        .card-header { padding: 12px 15px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+        .card-title { font-weight: 900; font-size: 0.7rem; text-transform: uppercase; color: #374151; letter-spacing: 0.05em; display: flex; align-items: center; gap: 8px; }
+
+        /* Badges */
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+        .badge-inc { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-sol { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+        .badge-tra { background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; }
+
+        .btn-view { cursor: pointer; color: #dc2626; font-weight: 700; font-size: 0.7rem; background: #fef2f2; padding: 3px 12px; border-radius: 4px; border: 1px solid #fecaca; transition: all 0.2s; }
+        .btn-view:hover { background: #dc2626; color: white; }
+
+        .corp-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .corp-table th { background-color: #374151; color: white; padding: 8px 10px; text-align: left; font-weight: 700; text-transform: uppercase; position: sticky; top: 0; z-index: 10; }
+        .corp-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; color: #4b5563; vertical-align: middle; }
+        .corp-table tr:hover { background-color: #f9fafb; }
+
+        #ticketModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 9999; align-items: center; justify-content: center; padding: 1rem; }
+        #ticketModal.active { display: flex !important; }
+
+        #loader { transition: opacity 0.3s ease-out; }
+        .loader-hidden { opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body class="pb-20">
+
+    <div id="loader" class="fixed inset-0 bg-slate-900 z-[10000] flex flex-col items-center justify-center text-white">
+        <i class="fa-solid fa-circle-notch fa-spin text-5xl text-red-500 mb-4"></i>
+        <h2 class="text-xl font-bold uppercase tracking-widest">Cargando MMR v19</h2>
+        <p class="text-sm text-slate-400 mt-2">Calculando Rankings...</p>
+    </div>
+
+    <div class="header-bg shadow-xl sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col lg:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <div class="bg-white/10 p-2 rounded-lg"><i class="fa-solid fa-chart-pie text-2xl text-white"></i></div>
+                <div>
+                    <h1 class="text-xl font-black uppercase leading-tight">Panel SLA v19</h1>
+                    <p class="text-red-100 text-[10px] font-medium uppercase tracking-wider opacity-80">Seguimiento MMR Completo</p>
+                </div>
+            </div>
+            <div class="flex gap-2 bg-black/20 p-1.5 rounded-lg backdrop-blur-md border border-white/10">
+                <button onclick="generateGlobalSummary()" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-2 border border-white/10"><i class="fa-solid fa-pen-nib"></i> Resumen</button>
+                <div class="w-px bg-white/20 mx-1"></div>
+                <select id="monthSelector" class="bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded border border-slate-600 outline-none cursor-pointer uppercase tracking-wide hover:bg-slate-700"><option value="all">Mes: Todos</option></select>
+                <select id="weekSelector" class="bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded border border-slate-600 outline-none cursor-pointer disabled:opacity-50 uppercase tracking-wide hover:bg-slate-700" disabled><option value="all">Semana: Todas</option></select>
+                <label class="cursor-pointer bg-white text-red-700 hover:bg-red-50 px-4 py-1.5 rounded shadow text-xs font-bold flex items-center gap-2 transition transform hover:scale-105">
+                    <i class="fa-solid fa-upload"></i> CARGAR CSV
+                    <input type="file" id="csvFile" accept=".csv" class="hidden">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 mt-6 space-y-6">
+
+        <div id="summary-box" class="hidden bg-white border-l-4 border-slate-700 p-5 shadow-sm rounded-r-lg animate-fade-in mb-6">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-slate-800 font-bold uppercase text-xs flex items-center gap-2"><i class="fa-solid fa-robot text-red-600"></i> Resumen Semanal</h3>
+                <button onclick="copySummary()" class="text-[10px] bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded font-bold text-slate-600 transition uppercase">Copiar</button>
+            </div>
+            <p id="summary-text" class="text-sm text-slate-700 font-mono leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded border border-slate-200"></p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="card p-4 border-t-4 border-slate-600"><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Tickets</p><h2 class="text-3xl font-black text-slate-700 mt-1" id="kpi-total">0</h2></div>
+            <div class="card p-4 border-t-4 border-green-600"><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SLA Incidentes</p><div class="flex justify-between items-end mt-1"><h2 class="text-3xl font-black text-green-600" id="kpi-sla">0%</h2><div class="text-right"><p class="text-[10px] text-slate-400 font-bold">Meta: 95%</p></div></div></div>
+            <div class="card p-4 border-t-4 border-blue-600">
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Solicitudes / Transf.</p>
+                <div class="flex justify-between items-end mt-1">
+                    <div><span class="block text-xs font-bold text-blue-800" id="count-sol">0 SOL</span><span class="block text-xs font-bold text-orange-800" id="count-tra">0 TRA</span></div>
+                    <i class="fa-solid fa-boxes-packing text-blue-200 text-2xl"></i>
+                </div>
+            </div>
+            <div class="card p-0 border-t-4 border-orange-500 flex flex-col bg-orange-50/10">
+                <div class="p-2 bg-orange-50 border-b border-orange-100 flex justify-between items-center"><p class="text-[10px] text-orange-800 font-bold uppercase"><i class="fa-solid fa-eye mr-1"></i> Watchlist</p><span class="bg-orange-200 text-orange-900 text-[10px] px-1.5 rounded font-bold" id="watch-count">0</span></div>
+                <div id="watchlist-content" class="flex-1 overflow-y-auto h-16 p-2 space-y-1"><p class="text-[10px] text-slate-400 italic text-center mt-2">Todo OK</p></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fa-solid fa-store text-slate-500"></i> Top 5 Locales (Mayor Incidencia)</div></div>
+                <div class="p-4 h-64"><canvas id="chartTopLocales"></canvas></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fa-solid fa-wrench text-red-600"></i> Top 5 Fallas Recurrentes</div></div>
+                <div class="p-4 h-64"><canvas id="chartTopFallas"></canvas></div>
+            </div>
+        </div>
+
+        <div class="card p-5">
+            <div class="card-header">
+                <div class="card-title"><i class="fa-solid fa-chart-column text-red-600"></i> Cumplimiento SLA por Bandera (Incidentes)</div>
+                <button onclick="downloadChart('chartSLA')" class="text-slate-400 hover:text-red-600 transition"><i class="fa-solid fa-camera"></i></button>
+            </div>
+            <div class="h-64"><canvas id="chartSLA"></canvas></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fa-solid fa-clipboard-list text-blue-600"></i> Detalle Solicitudes</div></div>
+                <div class="p-4 h-64"><canvas id="chartSolicitudes"></canvas></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fa-solid fa-share-from-square text-orange-600"></i> Destino Transferencias</div></div>
+                <div class="p-4 h-64"><canvas id="chartTransferencias"></canvas></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fa-solid fa-box-open text-green-600"></i> Tipo Envío Insumos</div></div>
+                <div class="p-4 h-64 relative"><canvas id="chartInsumos"></canvas></div>
+            </div>
+        </div>
+
+        <div class="card overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50">
+                <div class="flex items-center gap-2"><h3 class="font-black text-slate-700 uppercase text-sm"><i class="fa-solid fa-list-ul text-red-600 mr-2"></i> Detalle Universal</h3><span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold" id="rows-count">0</span></div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <div class="flex bg-white border border-slate-300 rounded overflow-hidden">
+                        <button onclick="applyQuickFilter('all')" class="px-3 py-1 text-[10px] font-bold hover:bg-slate-100 border-r">TODOS</button>
+                        <button onclick="applyQuickFilter('incidentes')" class="px-3 py-1 text-[10px] font-bold text-red-700 hover:bg-red-50 border-r">INC</button>
+                        <button onclick="applyQuickFilter('solicitudes')" class="px-3 py-1 text-[10px] font-bold text-blue-700 hover:bg-blue-50 border-r">SOL</button>
+                        <button onclick="applyQuickFilter('transferencias')" class="px-3 py-1 text-[10px] font-bold text-orange-700 hover:bg-orange-50">TRA</button>
+                    </div>
+                    <div class="relative flex-1 md:w-64"><i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i><input type="text" id="searchBox" placeholder="Buscar..." class="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:border-red-500"></div>
+                    <button onclick="window.exportExcel()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1"><i class="fa-solid fa-file-excel"></i></button>
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[500px]">
+                <table class="corp-table">
+                    <thead class="bg-white z-10">
+                        <tr><th class="w-24">Ticket</th><th class="w-28">Fecha</th><th>Bandera</th><th>Local</th><th>Tipo</th><th class="w-1/3">Info / Detalle</th><th class="text-center">SLA</th><th class="text-right">Acción</th></tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="ticketModal">
+        <div class="bg-white w-full max-w-4xl rounded-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-fade-in relative">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div class="flex items-center gap-4">
+                    <div class="bg-red-100 p-2 rounded text-red-600"><i class="fa-solid fa-ticket text-xl"></i></div>
+                    <div><h2 class="text-lg font-black text-slate-800" id="m-ticket-id">TICKET #</h2><div id="m-badge-status" class="mt-1"></div></div>
+                </div>
+                <button onclick="closeModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 text-slate-400 hover:text-red-600 transition text-xl font-bold">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto bg-white grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="space-y-5">
+                    <div>
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3">Datos Generales</h4>
+                        <div class="space-y-2 text-sm border border-slate-200 rounded p-3 bg-slate-50">
+                            <div class="flex justify-between"><span class="text-slate-500">Fecha</span><span class="font-bold text-slate-700" id="m-date">-</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Tipo</span><span class="font-bold text-slate-700" id="m-type">-</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Bandera</span><span class="font-bold text-slate-700" id="m-flag">-</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Local</span><span class="font-bold text-slate-700 text-right" id="m-local">-</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-100 rounded p-3">
+                        <h4 class="text-[10px] font-bold text-blue-800 uppercase mb-1">Información Universal</h4>
+                        <p class="text-xs text-slate-700 font-medium" id="m-visual-info">-</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 relative">
+                        <div class="absolute left-0 top-0 bottom-0 w-1 bg-yellow-400 rounded-l-lg"></div>
+                        <h4 class="text-yellow-800 font-bold text-xs uppercase mb-2"><i class="fa-solid fa-book-open mr-1"></i> Bitácora</h4>
+                        <p class="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap" id="m-comment">-</p>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                        <h4 class="text-slate-500 font-bold text-xs uppercase mb-2">Justificación</h4>
+                        <p class="text-xs text-slate-600" id="m-just">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+        window.DB = []; window.FILTERED = [];
+        let charts = { sla:null, locales:null, fallas:null, sol:null, tra:null, ins:null };
+        let quickFilterType = 'all';
+
+        // --- UTILS ---
+        function detectDelimiter(text) { const comma=(text.match(/,/g)||[]).length; const semi=(text.match(/;/g)||[]).length; return semi > comma ? ";" : ","; }
+        function cleanKey(obj, keyPart) { if(!obj) return ''; const keys=Object.keys(obj); const found=keys.find(k=>k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(keyPart)); return found ? obj[found] : ''; }
+
+        // --- CARGA ---
+        const loader = document.getElementById('loader');
+        setTimeout(() => loader.classList.add('loader-hidden'), 800);
+
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0]; if(!file) return;
+            loader.classList.remove('loader-hidden');
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const content = evt.target.result;
+                const delim = detectDelimiter(content.substring(0, 1000));
+                Papa.parse(content, {
+                    delimiter: delim, header: true, skipEmptyLines: true, encoding: "ISO-8859-1",
+                    complete: function(results) {
+                        try { processData(results.data); } catch(e) { console.error(e); alert("Error."); } 
+                        finally { setTimeout(()=>loader.classList.add('loader-hidden'), 500); }
+                    }
+                });
+            };
+            reader.readAsText(file, "ISO-8859-1");
+        });
+
+        function processData(data) {
+            window.DB = data.map((d, index) => {
+                const ticketVal = cleanKey(d, 'numer') || cleanKey(d, 'ticket');
+                if (!ticketVal || ticketVal.length < 3) return null;
+
+                const tipoRaw = cleanKey(d, 'tipo2') || cleanKey(d, 'tipo') || 'Otro';
+                const tipoClean = tipoRaw.trim().toLowerCase();
+                
+                const reporteVal = cleanKey(d, 'detalle reporte') || '';
+                const fallaTecVal = cleanKey(d, 'falla') || '';
+                const justifVal = cleanKey(d, 'justificaci') || ''; 
+                const salidaVal = cleanKey(d, 'salida') || '';
+
+                let infoToShow = "";
+                if (tipoClean.includes('incidentes')) {
+                    if (reporteVal.toUpperCase().includes('DERIVA') || reporteVal.toUpperCase().includes('TECNICA')) {
+                        infoToShow = (fallaTecVal.length > 2) ? fallaTecVal : reporteVal;
+                    } else { infoToShow = (fallaTecVal.length > 2) ? fallaTecVal : reporteVal; }
+                } else if (tipoClean.includes('solicitudes')) { infoToShow = reporteVal || "Sin detalle"; } 
+                else if (tipoClean.includes('transferencias')) { infoToShow = justifVal || reporteVal || "Transferencia"; } 
+                else { infoToShow = reporteVal; }
+
+                // Filtro Falla Pura (Ranking)
+                const adminTerms = ["TRANSFERENCIA", "ENVIO", "RETIRO", "RETORNO", "INSUMO", "SOLICITUD"];
+                const fallaPura = (fallaTecVal.length > 2 && !adminTerms.some(t => fallaTecVal.toUpperCase().includes(t))) ? fallaTecVal : null;
+
+                let supplyType = null;
+                if (salidaVal.toLowerCase().includes('proactive')) supplyType = 'Automático';
+                else if (salidaVal.toLowerCase().includes('asset') || salidaVal.toLowerCase().includes('request')) supplyType = 'Manual';
+
+                return {
+                    _uid: index, ticket: ticketVal.trim(), fecha: cleanKey(d, 'fecha atenc'),
+                    bandera: (cleanKey(d, 'bandera') || cleanKey(d, 'unidad') || 'Otros').trim(),
+                    local: `${cleanKey(d, 'sap')||''} ${cleanKey(d, 'local')||''}`.trim(),
+                    tipo: tipoRaw.trim(), tipoClean: tipoClean,
+                    cumple: (cleanKey(d, 'cumple') || 'No').trim(),
+                    mes: (cleanKey(d, 'mes') || 'sin mes').trim().toLowerCase(),
+                    semana: (cleanKey(d, 'semana') || 'sin semana').trim(),
+                    visualInfo: infoToShow,
+                    supplyType: supplyType,
+                    detalleReporte: reporteVal,
+                    detalleJustificacion: justifVal,
+                    fallaPura: fallaPura,
+                    comentario: cleanKey(d, 'comentarios') || cleanKey(d, 'notas') || '',
+                    justificacion: cleanKey(d, 'justificaci') || '',
+                    searchStr: JSON.stringify(d).toLowerCase()
+                };
+            }).filter(i => i !== null);
+            initFilters(); applyFilters();
+        }
+
+        function initFilters() {
+            const months = [...new Set(window.DB.map(d => d.mes))].filter(m => m !== 'sin mes').sort();
+            const mapM = {'enero':1,'febrero':2,'marzo':3,'abril':4,'mayo':5,'junio':6,'julio':7,'agosto':8,'septiembre':9,'octubre':10,'noviembre':11,'diciembre':12};
+            months.sort((a,b) => (mapM[a]||99) - (mapM[b]||99));
+            const selM = document.getElementById('monthSelector');
+            selM.innerHTML = '<option value="all">Mes: Todos</option>';
+            months.forEach(m => { const op = document.createElement('option'); op.value = m; op.innerText = m.toUpperCase(); selM.appendChild(op); });
+            selM.onchange = () => { updateWeekSelector(); applyFilters(); };
+            document.getElementById('weekSelector').onchange = applyFilters;
+            document.getElementById('searchBox').onkeyup = applyFilters;
+        }
+        function updateWeekSelector() {
+            const m = document.getElementById('monthSelector').value;
+            const selW = document.getElementById('weekSelector');
+            selW.innerHTML = '<option value="all">Semana: Todas</option>';
+            selW.disabled = (m === 'all');
+            if(m !== 'all') {
+                const weeks = [...new Set(window.DB.filter(d => d.mes === m).map(d => d.semana))].sort();
+                weeks.forEach(w => { const op = document.createElement('option'); op.value = w; op.innerText = w; selW.appendChild(op); });
+                selW.disabled = false;
+            }
+        }
+        function applyQuickFilter(type) { quickFilterType = type; applyFilters(); }
+        function applyFilters() {
+            const m = document.getElementById('monthSelector').value;
+            const w = document.getElementById('weekSelector').value;
+            const q = document.getElementById('searchBox').value.toLowerCase();
+            window.FILTERED = window.DB.filter(d => {
+                if (m !== 'all' && d.mes !== m) return false;
+                if (w !== 'all' && d.semana !== w) return false;
+                if (q && !d.searchStr.includes(q)) return false;
+                if (quickFilterType !== 'all' && !d.tipoClean.includes(quickFilterType)) return false;
+                return true;
+            });
+            updateUI();
+        }
+
+        function updateUI() {
+            const data = window.FILTERED;
+            document.getElementById('rows-count').innerText = data.length;
+
+            let cInc=0, cSol=0, cTra=0, okInc=0;
+            const flags = {};
+            const solCounts = {};
+            const traCounts = {};
+            const supplyCounts = { 'Automático': 0, 'Manual': 0 };
+            const localCounts = {};
+            const failCounts = {};
+
+            data.forEach(d => {
+                // Incidents & SLA
+                if(d.tipoClean.includes('incidentes')) {
+                    cInc++; 
+                    const ok = d.cumple.toLowerCase().includes('si'); 
+                    if(ok) okInc++;
+                    if(!flags[d.bandera]) flags[d.bandera]={tot:0, fail:0}; 
+                    flags[d.bandera].tot++; 
+                    if(!ok) flags[d.bandera].fail++;
+                    
+                    // Top Locales (Solo Incidentes)
+                    localCounts[d.local] = (localCounts[d.local] || 0) + 1;
+                    
+                    // Top Fallas (Puro)
+                    if (d.fallaPura) failCounts[d.fallaPura] = (failCounts[d.fallaPura] || 0) + 1;
+                }
+                // Solicitudes
+                else if(d.tipoClean.includes('solicitudes')) {
+                    cSol++;
+                    const det = d.detalleReporte || 'Otros';
+                    solCounts[det] = (solCounts[det] || 0) + 1;
+                }
+                // Transferencias
+                else if(d.tipoClean.includes('transferencias')) {
+                    cTra++;
+                    const just = d.detalleJustificacion || 'Otras';
+                    traCounts[just] = (traCounts[just] || 0) + 1;
+                }
+
+                if (d.supplyType) supplyCounts[d.supplyType]++;
+            });
+
+            // KPIs
+            const sla = cInc > 0 ? ((okInc/cInc)*100).toFixed(1) : 0;
+            document.getElementById('kpi-total').innerText = data.length;
+            document.getElementById('kpi-sla').innerText = sla + '%';
+            document.getElementById('count-sol').innerText = cSol + ' SOL';
+            document.getElementById('count-tra').innerText = cTra + ' TRA';
+
+            renderWatchlist(data); 
+            renderTable(data);
+            
+            // Charts
+            renderCharts(flags, solCounts, traCounts, supplyCounts, localCounts, failCounts);
+        }
+
+        function renderCharts(flags, sols, tras, supplies, locales, failures) {
+            // 1. SLA Chart (Vertical Bar)
+            const labelsSLA = Object.keys(flags).sort();
+            updateChart('sla', 'chartSLA', 'bar', labelsSLA, [
+                { label: 'Total', data: labelsSLA.map(l=>flags[l].tot), backgroundColor: '#4b5563' },
+                { label: 'Vencidos', data: labelsSLA.map(l=>flags[l].fail), backgroundColor: '#ef4444' }
+            ]);
+
+            // 2. Top Locales (Horizontal)
+            const topLocales = Object.entries(locales).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            updateChart('locales', 'chartTopLocales', 'bar', topLocales.map(x=>x[0]), [{
+                label: 'Incidentes', data: topLocales.map(x=>x[1]), backgroundColor: '#3b82f6'
+            }], true);
+
+            // 3. Top Fallas (Horizontal)
+            const topFallas = Object.entries(failures).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            updateChart('fallas', 'chartTopFallas', 'bar', topFallas.map(x=>x[0]), [{
+                label: 'Frecuencia', data: topFallas.map(x=>x[1]), backgroundColor: '#dc2626'
+            }], true);
+
+            // 4. Insumos Chart (Pie)
+            updateChart('ins', 'chartInsumos', 'doughnut', Object.keys(supplies), [{
+                data: Object.values(supplies), backgroundColor: ['#22c55e', '#64748b']
+            }]);
+
+            // 5. Solicitudes (Horizontal)
+            const topSol = Object.entries(sols).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            updateChart('sol', 'chartSolicitudes', 'bar', topSol.map(x=>x[0]), [{
+                label: 'Cantidad', data: topSol.map(x=>x[1]), backgroundColor: '#a855f7'
+            }], true);
+
+            // 6. Transferencias (Horizontal)
+            const topTra = Object.entries(tras).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            updateChart('tra', 'chartTransferencias', 'bar', topTra.map(x=>x[0]), [{
+                label: 'Cantidad', data: topTra.map(x=>x[1]), backgroundColor: '#f97316'
+            }], true);
+        }
+
+        function updateChart(key, id, type, labels, datasets, indexAxisY = false) {
+            const ctx = document.getElementById(id).getContext('2d');
+            if(charts[key]) charts[key].destroy();
+            charts[key] = new Chart(ctx, {
+                type: type,
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    indexAxis: indexAxisY ? 'y' : 'x',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: {display: type==='doughnut' || datasets.length>1}, datalabels: {color:'white', font:{weight:'bold'}, formatter:v=>v>0?v:''} },
+                    scales: type!=='doughnut' ? { x: {beginAtZero:true} } : {}
+                }
+            });
+        }
+
+        function renderWatchlist(data) {
+            const bad = data.filter(d => d.tipoClean.includes('incidentes') && !d.cumple.toLowerCase().includes('si'));
+            document.getElementById('watch-count').innerText = bad.length;
+            const c = document.getElementById('watchlist-content');
+            if(bad.length===0) { c.innerHTML = '<p class="text-[10px] text-green-600 text-center mt-2 font-bold">✅ Todo OK</p>'; return; }
+            let h = '';
+            bad.forEach(b => { h += `<div class="flex justify-between items-center border-b border-orange-100 py-1"><span class="text-[10px] text-slate-600 truncate w-3/4 font-medium"><b>${b.ticket}</b> ${b.local.substring(0,15)}</span><button class="btn-view" onclick="window.openTicketModal(${b._uid})">VER</button></div>`; });
+            c.innerHTML = h;
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody'); tbody.innerHTML = '';
+            const limit = (quickFilterType !== 'all' || document.getElementById('searchBox').value) ? 500 : 100;
+            data.slice(0, limit).forEach(d => {
+                let badge = 'badge-inc', slaHtml = '-';
+                if(d.tipoClean.includes('solicitudes')) { badge = 'badge-sol'; }
+                else if(d.tipoClean.includes('transferencias')) { badge = 'badge-tra'; }
+                if(d.tipoClean.includes('incidentes')) { slaHtml = d.cumple.toLowerCase().includes('si') ? '<span class="text-green-600 font-bold">OK</span>' : '<span class="text-red-600 font-bold">FAIL</span>'; }
+                tbody.innerHTML += `<tr><td class="font-mono font-bold text-slate-700">${d.ticket}</td><td class="text-xs">${d.fecha}</td><td class="font-bold text-xs text-slate-600">${d.bandera}</td><td class="text-xs text-slate-500 uppercase">${d.local}</td><td><span class="badge ${badge}">${d.tipo}</span></td><td class="text-xs text-slate-700 font-medium truncate max-w-[200px]" title="${d.visualInfo}">${d.visualInfo.substring(0,45)}...</td><td class="text-center text-xs">${slaHtml}</td><td class="text-right"><button class="btn-view" onclick="window.openTicketModal(${d._uid})">VER</button></td></tr>`;
+            });
+        }
+
+        window.openTicketModal = function(uid) {
+            const d = window.DB.find(i => i._uid === uid); if(!d) return;
+            document.getElementById('m-ticket-id').innerText = 'TICKET: ' + d.ticket;
+            document.getElementById('m-date').innerText = d.fecha;
+            document.getElementById('m-type').innerText = d.tipo;
+            document.getElementById('m-flag').innerText = d.bandera;
+            document.getElementById('m-local').innerText = d.local;
+            document.getElementById('m-visual-info').innerText = d.visualInfo;
+            document.getElementById('m-comment').innerText = d.comentario || 'Sin comentarios.';
+            document.getElementById('m-just').innerText = d.justificacion || '-';
+            const b = document.getElementById('m-badge-status');
+            if(d.tipoClean.includes('incidentes')) {
+                const ok = d.cumple.toLowerCase().includes('si');
+                b.innerHTML = ok ? '<span class="bg-green-100 text-green-800 px-3 py-1 rounded text-xs font-bold border border-green-200">SLA CUMPLIDO</span>' : '<span class="bg-red-100 text-red-800 px-3 py-1 rounded text-xs font-bold border border-red-200">SLA VENCIDO</span>';
+            } else { b.innerHTML = '<span class="bg-slate-100 text-slate-500 px-3 py-1 rounded text-xs font-bold">NO APLICA SLA</span>'; }
+            const m = document.getElementById('ticketModal'); m.classList.add('active');
+        }
+        window.closeModal = function() { document.getElementById('ticketModal').classList.remove('active'); }
+        window.generateGlobalSummary = function() { const tot = document.getElementById('kpi-total').innerText; const sla = document.getElementById('kpi-sla').innerText; const txt = `Hola equipo,\n\nEsta semana cumplimos un ${sla} de SLA.\n\nQuedo atento a sus comentarios.`; document.getElementById('summary-text').innerText = txt; document.getElementById('summary-box').classList.remove('hidden'); }
+        window.copySummary = function() { navigator.clipboard.writeText(document.getElementById('summary-text').innerText); alert("Copiado"); }
+        window.exportExcel = function() { const d = window.FILTERED.map(r => ({Ticket:r.ticket, Fecha:r.fecha, Local:r.local, Info:r.visualInfo, SLA:r.cumple, Texto: r.comentario})); const ws = XLSX.utils.json_to_sheet(d); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Data"); XLSX.writeFile(wb, "Reporte_Universal.xlsx"); }
+        window.downloadChart = function(id) { html2canvas(document.getElementById(id)).then(c => { const l = document.createElement('a'); l.download = 'Chart.png'; l.href = c.toDataURL(); l.click(); }); }
+    </script>
+</body>
+</html>
